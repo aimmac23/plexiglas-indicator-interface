@@ -11,6 +11,8 @@ from cgi import parse_qs
 import usb.core
 import usb.util
 
+import usb.backend.libusb0 as libusb0
+
 usb_command_map = {
     "on": 'N',
     "off": 'F',
@@ -47,7 +49,7 @@ def application(environ, start_response):
     params = parse_qs(environ['QUERY_STRING'])
 
     
-    dev = usb.core.find(idVendor=0x04d8, idProduct=0x0f1c)
+    dev = usb.core.find(idVendor=0x04d8, idProduct=0x0f1c, backend=libusb0.get_backend())
     
     if dev == None:
         status = '500 Internal Error'
