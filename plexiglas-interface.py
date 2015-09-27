@@ -47,7 +47,6 @@ def write_device_name(device, newName):
         
         out_endpoint.write("W:%s" % newName )
         result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
-        print "result was: %s" % result
         if('ACK' not in result):
             raise Exception("Command not supported - result was: '%s'" % str(result))
         return
