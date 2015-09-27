@@ -5,9 +5,6 @@ Created on Sun Mar 15 09:32:34 2015
 @author: aim
 """
 
-from wsgiref.simple_server import make_server
-from cgi import parse_qs
-
 import usb.core
 import usb.util
 
@@ -37,7 +34,6 @@ def get_device_name(device):
         
         out_endpoint.write("L")
         result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
-        print "result was: %s" % result
         if('L: ' not in result):
             raise Exception("Command not supported - result was: '%s'" % str(result))
         # Replacing * characters due to strange firmware wire protocol
@@ -186,13 +182,6 @@ def handle_brightness_and_rate(in_endpoint, out_endpoint):
     if request.args.get("rate", None) is not None:
             rate = request.args["rate"]
             handle_usb_command(in_endpoint, out_endpoint, "R" + str(rate))
-            
-                
-usb_command_map = {
-    "on": 'N',
-    "off": 'F',
-    "blink": 'P'
-}
 
 if __name__ == "__main__":
    # Instantiate the WSGI server.
