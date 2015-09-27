@@ -13,117 +13,174 @@ import usb.util
 
 import usb.backend.libusb0 as libusb0
 
+from flask import Flask
+from flask import request
+from flask import make_response
+import json
+
+app = Flask(__name__)
+
+def setup_device(device):
+    '''Boiler-plate USB config before we send a command'''
+    cfg = device.get_active_configuration()
+    interface = cfg[(0,0)]
+    in_endpoint = usb.util.find_descriptor(interface, custom_match = lambda e: 
+    usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN)
+    out_endpoint = usb.util.find_descriptor(interface, custom_match = lambda e: 
+    usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT)
+    
+    return (in_endpoint, out_endpoint)
+
+def get_device_name(device):
+    try:        
+        (in_endpoint, out_endpoint) = setup_device(device)
+        
+        out_endpoint.write("L")
+        result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
+        print "result was: %s" % result
+        if('L: ' not in result):
+            raise Exception("Command not supported - result was: '%s'" % str(result))
+        # Replacing * characters due to strange firmware wire protocol
+        return result.replace("L: ", "").replace("*", "")
+    finally:
+        usb.util.dispose_resources(device)
+
+def write_device_name(device, newName):
+    try:        
+        (in_endpoint, out_endpoint) = setup_device(device)
+        
+        out_endpoint.write("W:%s" % newName )
+        result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
+        print "result was: %s" % result
+        if('ACK' not in result):
+            raise Exception("Command not supported - result was: '%s'" % str(result))
+        return
+    finally:
+        usb.util.dispose_resources(device)
+    
+def enumerate_devices():
+    devices = usb.core.find(find_all=True, idVendor=0x04d8, idProduct=0x0f1c, backend=libusb0.get_backend())
+    toReturn = {}
+    for device in devices:
+        toReturn[get_device_name(device)] = device
+    return toReturn
+
+@app.route("/plexiglas/")
+def list_devices():
+    deviceMap = enumerate_devices()
+    
+    toReturn = []
+    for key in deviceMap.keys():
+        toReturn.append(key)
+        
+    return json.dumps(str(toReturn))
+
+@app.route("/plexiglas/writeName")
+def writeId():
+    deviceMap = enumerate_devices()
+    if len(deviceMap) > 1:
+        return make_response("Too many devices attached - connect only the device to be renamed", 400)
+    if len(deviceMap) < 1:
+        return make_response("No devices attached - connect a device to proceed", 400)
+    
+    newName = request.args.get("name", None)
+    if newName is None:
+        return make_response("Parameter required: name")
+    device = deviceMap.items()[0]
+    write_device_name(device[1], newName)
+    return "OK - new name set to %s" % newName
+
+@app.route("/plexiglas/device/<name>")
+@app.route("/plexiglas/device/<name>/")
+def getDevice(name):
+    deviceMap = enumerate_devices()
+    if name not in deviceMap.keys():
+        return make_response("Device not found", 400)
+    return "OK"
+
+@app.route("/plexiglas/device/<name>/blink")
+def led_blink(name):
+    deviceMap = enumerate_devices()
+    if name not in deviceMap.keys():
+        return make_response("Device not found", 400)
+    
+    device = deviceMap[name]
+    try:
+        (in_endpoint, out_endpoint) = setup_device(device)
+
+        handle_brightness_and_rate(in_endpoint, out_endpoint)
+        
+        handle_usb_command(in_endpoint, out_endpoint, "P")
+        
+
+        return "OK"
+
+    finally:
+        usb.util.dispose_resources(device)
+
+@app.route("/plexiglas/device/<name>/on")
+def led_on(name):
+    deviceMap = enumerate_devices()
+    if name not in deviceMap.keys():
+        return make_response("Device not found", 400)
+    
+    device = deviceMap[name]
+    try:
+        (in_endpoint, out_endpoint) = setup_device(device)
+        
+        handle_brightness_and_rate(in_endpoint, out_endpoint)
+
+        handle_usb_command(in_endpoint, out_endpoint, "N")
+        
+        return "OK"
+
+    finally:
+        usb.util.dispose_resources(device)
+
+
+@app.route("/plexiglas/device/<name>/off")
+def led_off(name):
+    deviceMap = enumerate_devices()
+    if name not in deviceMap.keys():
+        return make_response("Device not found", 400)
+    
+    device = deviceMap[name]
+    try:
+        (in_endpoint, out_endpoint) = setup_device(device)
+        
+        handle_brightness_and_rate(in_endpoint, out_endpoint)
+        
+        handle_usb_command(in_endpoint, out_endpoint, "F")
+        
+        return "OK"
+
+    finally:
+        usb.util.dispose_resources(device)
+
+def handle_usb_command(in_endpoint, out_endpoint, command):
+    out_endpoint.write(command)
+    result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
+    
+    if result != "ACK":
+        raise Exception("Device did not accept command '%s' - response: '%s'" % (command, result))
+
+def handle_brightness_and_rate(in_endpoint, out_endpoint):
+    if request.args.get("brightness", None) is not None:
+            brightness = request.args["brightness"]
+            handle_usb_command(in_endpoint, out_endpoint, "B" + str(brightness))
+    if request.args.get("rate", None) is not None:
+            rate = request.args["rate"]
+            handle_usb_command(in_endpoint, out_endpoint, "R" + str(rate))
+            
+                
 usb_command_map = {
     "on": 'N',
     "off": 'F',
     "blink": 'P'
 }
 
-def send_response(start_response, status, response_body):
-
-        content_type = "text/plain" 
-
-        response_headers = [('Content-Type', content_type ),
-                  ('Content-Length', str(len(response_body))),
-                   ("Cache-Control",  "no-cache, must-revalidate")]  
-                   
-        start_response(status, response_headers)
-
-
-def getParam(params, name):
-    if name in params:
-        return params[name][0]
-    else:
-        return None
-        
-def handleError(result, start_response):
-    status = "500 Internal Server Error"
-    response_body = "Inappropriate response from the USB device: %s" % result
-    send_response(start_response, status, response_body)
-    return [response_body]
-        
-# This is our application object. It could have any name,
-# except when using mod_wsgi where it must be "application"
-def application(environ, start_response):  
-    
-    params = parse_qs(environ['QUERY_STRING'])
-
-    
-    dev = usb.core.find(idVendor=0x04d8, idProduct=0x0f1c, backend=libusb0.get_backend())
-    
-    if dev == None:
-        status = '500 Internal Error'
-        response_body = "The USB device is not plugged in!"
-        send_response(start_response, status, response_body)
-        return [response_body]
-
-    else:
-        try:
-            
-            cfg = dev.get_active_configuration()
-            interface = cfg[(0,0)]
-            in_endpoint = usb.util.find_descriptor(interface, custom_match = lambda e: 
-            usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN)
-            out_endpoint = usb.util.find_descriptor(interface, custom_match = lambda e: 
-            usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_OUT)
-
-            command = getParam(params, 'command');
-
-            if command is not None:
-
-                if command not in usb_command_map:
-                    status = "400 Bad Request"
-                    response_body = "Bad request - could not recognise command %s" % command
-                    send_response(start_response, status, response_body);
-                    return [response_body]
-                
-                usb_command = usb_command_map[command]
-
-                                
-                out_endpoint.write(usb_command)
-                result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
-                if('ACK' not in result):
-                    return handleError(result, start_response)
-            
-            brightness = getParam(params, "brightness")
-            if brightness is not None:
-                out_endpoint.write("B" + str(brightness))
-                result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
-                if('ACK' not in result):
-                    return handleError(result, start_response)
-            
-            
-            rate = getParam(params, "rate")
-            
-            if rate is not None:
-                out_endpoint.write("R" + str(rate))
-                result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
-                if('ACK' not in result):
-                    return handleError(result, start_response)
-            
-            response_body = "OK"
-            status = "200 OK"
-            send_response(start_response, status, response_body)
-            return [response_body]
-        
-        finally:       
-            # Release the device
-            usb.util.dispose_resources(dev)
-
-
-
 if __name__ == "__main__":
    # Instantiate the WSGI server.
+   app.run(debug=True)
    
-   # It will receive the request, pass it to the application
-   # and send the application's response to the client
-    httpd = make_server(
-    'localhost', # The host name.
-    8052, # A port number where to wait for the request.
-    application # Our application object name, in this case a function.
-    )
-
-    # Wait for a single request, serve it and quit.
-    httpd.serve_forever()
-
 
