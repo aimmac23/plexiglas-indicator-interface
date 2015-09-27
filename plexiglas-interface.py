@@ -157,6 +157,21 @@ def led_off(name):
     finally:
         usb.util.dispose_resources(device)
 
+@app.route("/plexiglas/device/<name>/name")
+def writeNewName(name):
+    deviceMap = enumerate_devices()
+    
+    newName = request.args.get("name", None)
+    if newName is None:
+        return make_response("Parameter required: name")
+    
+    if name not in deviceMap.keys():
+        return make_response("Device not found", 400)
+    
+    device = deviceMap[name]
+    write_device_name(device, newName)
+    return "OK - new name set to %s" % newName
+
 def handle_usb_command(in_endpoint, out_endpoint, command):
     out_endpoint.write(command)
     result = "".join(map(chr, in_endpoint.read(40, timeout=500)))
