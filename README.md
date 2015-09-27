@@ -1,5 +1,13 @@
 # plexiglas-indicator-interface
-Python code to contol a USB plexiglas indicator
+
+This project contains code to control a USB Plexiglas Indicator. This is a device consisting of a beige box with a plexiglas rod sticking out the top, with an LED hidden in the base.
+
+Features:
+ * USB control protocol
+ * Plexiglas rod lights up along its length when the LED is turned on
+ * LED can be turned off either using a USB command, or by depressing the rod into the control box to trigger a switch (not on 50cm versions)
+ * Lighting modes include a fully-on mode and "blink" mode, where the LED pulsates on and off again.
+ * Devices have re-writable names in their EEPROMs, to aid in command dispatching if more more than one device is connected at once.
 
 ## Requirements
  * PyUSB - http://sourceforge.net/projects/pyusb/
@@ -34,7 +42,7 @@ Enumerate all the names of the plexiglas indicators on the system. The names can
  
  Change the name of the given device to <newName>, by re-writing some of the data stored in its EEPROM memory. All future commands to this device must use the new device name.
  
- ### LED Commands
+### LED Commands
  
  All commands accept the following parameters:
  
