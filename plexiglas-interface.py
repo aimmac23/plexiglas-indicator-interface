@@ -184,6 +184,6 @@ def handle_brightness_and_rate(in_endpoint, out_endpoint):
 
 if __name__ == "__main__":
    # Instantiate the WSGI server.
-   app.run(debug=True)
+   app.run(debug=True, host="0.0.0.0")
    
 
