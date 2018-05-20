@@ -8,7 +8,7 @@ Created on Sun Mar 15 09:32:34 2015
 import usb.core
 import usb.util
 
-import usb.backend.libusb0 as libusb0
+import usb.backend.libusb1 as libusb1
 
 from flask import Flask
 from flask import request
@@ -54,7 +54,7 @@ def write_device_name(device, newName):
         usb.util.dispose_resources(device)
     
 def enumerate_devices():
-    devices = usb.core.find(find_all=True, idVendor=0x04d8, idProduct=0x0f1c, backend=libusb0.get_backend())
+    devices = usb.core.find(find_all=True, idVendor=0x04d8, idProduct=0x0f1c, backend=libusb1.get_backend())
     toReturn = {}
     for device in devices:
         toReturn[get_device_name(device)] = device
